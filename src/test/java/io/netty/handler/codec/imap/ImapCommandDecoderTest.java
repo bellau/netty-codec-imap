@@ -29,14 +29,6 @@ import org.junit.Test;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
-import io.netty.handler.codec.imap.AtomParameter;
-import io.netty.handler.codec.imap.ChunkParameter;
-import io.netty.handler.codec.imap.CloseListParameter;
-import io.netty.handler.codec.imap.CommandParameter;
-import io.netty.handler.codec.imap.ImapCommand;
-import io.netty.handler.codec.imap.ImapCommandDecoder;
-import io.netty.handler.codec.imap.OpenListParameter;
-import io.netty.handler.codec.imap.QuotedStringParameter;
 import io.netty.handler.codec.imap.matcher.ImapCommandMatcher;
 
 public class ImapCommandDecoderTest {
@@ -76,8 +68,20 @@ public class ImapCommandDecoderTest {
 	}
 
 	@Test
+	public void testCommandAndNumberParam() {
+		assertThat(testCommand("ZZ01 BLURYBLOOP 12 34567890\r\n"),
+				match("ZZ01", "BLURYBLOOP", new NumberParameter(12), new NumberParameter(34567890)));
+	}
+
+	@Test
+	public void testCommandAndNilParam() {
+		assertThat(testCommand("ZZ01 BLURYBLOOP NIL NUL\r\n"),
+				match("ZZ01", "BLURYBLOOP", new NilParameter(), new AtomParameter("NUL")));
+	}
+
+	@Test
 	public void testCommandAndLiteralParam() {
-		assertThat(testCommand("ZZ01 BLURYBLOOP {11}12345678901 {2}OK \"OK2\"\r\n"),
+		assertThat(testCommand("ZZ01 BLURYBLOOP {11+}12345678901 {2+}OK \"OK2\"\r\n"),
 
 				match("ZZ01", "BLURYBLOOP",
 						new ChunkParameter(Unpooled.copiedBuffer("12345678901", Charset.defaultCharset()), 0),
@@ -87,8 +91,9 @@ public class ImapCommandDecoderTest {
 
 	@Test
 	public void testCommandAndListParam() {
-		assertThat(testCommand("ZZ01 BLURYBLOOP (ABC DCD)\r\n"), match("ZZ01", "BLURYBLOOP", new OpenListParameter(),
-				new AtomParameter("ABC"), new AtomParameter("DCD"), new CloseListParameter()));
+		assertThat(testCommand("ZZ01 BLURYBLOOP (ABC DCD NIL)\r\n"),
+				match("ZZ01", "BLURYBLOOP", new OpenListParameter(), new AtomParameter("ABC"), new AtomParameter("DCD"),
+						new NilParameter(), new CloseListParameter()));
 
 		assertThat(testCommand("ZZ01 BLURYBLOOP (ABC DCD (\"123\" OOO) )\r\n"),
 				match("ZZ01", "BLURYBLOOP", new OpenListParameter(), new AtomParameter("ABC"), new AtomParameter("DCD"),

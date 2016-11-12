@@ -247,7 +247,16 @@ public class ParameterDecoder {
 			return null;
 		} else {
 			in.readerIndex(pos);
-			CommandParameter ret = new AtomParameter(new String(seq.toString()));
+			String value = new String(seq.toString());
+			CommandParameter ret = null;
+			char firstChar = value.charAt(0);
+			if (firstChar >= '0' && firstChar <= '9') {
+				ret = new NumberParameter(Integer.parseInt(value));
+			} else if (firstChar == 'N' && value.equals("NIL")) {
+				ret = new NilParameter();
+			} else {
+				ret = new AtomParameter(value);
+			}
 			seq.reset();
 			size = 0;
 			return ret;
