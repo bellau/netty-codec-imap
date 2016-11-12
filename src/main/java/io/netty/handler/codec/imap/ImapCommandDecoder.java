@@ -20,7 +20,7 @@ import java.util.List;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
-import io.netty.handler.codec.imap.AtomDecoder.Atom;
+import io.netty.handler.codec.CorruptedFrameException;
 
 public class ImapCommandDecoder extends ByteToMessageDecoder {
 
@@ -33,7 +33,7 @@ public class ImapCommandDecoder extends ByteToMessageDecoder {
 	private State currentState;
 	private AtomDecoder atomDecoder = new AtomDecoder();
 	private ImapCommandBuilder builder;
-	private ParameterDecoder paramDecoder = new ParameterDecoder();
+	private ParameterDecoder paramDecoder = new ParameterDecoder(false);
 
 	public ImapCommandDecoder() {
 		resetNow();
@@ -43,32 +43,26 @@ public class ImapCommandDecoder extends ByteToMessageDecoder {
 	protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
 		switch (currentState) {
 		case READ_TAG: {
-			Atom atom = atomDecoder.parse(in);
+			String atom = atomDecoder.parse(in);
 			if (atom == null) {
 				return;
 			}
-			if (atom.crlf) {
-				// FIXME throw
-				throw new Exception("not allowed");
+			builder.tag(atom);
+			if (in.getByte(in.readerIndex()) == ' ') {
+				in.skipBytes(1);
+				currentState = State.READ_COMMAND;
+			} else {
+				throw new CorruptedFrameException();
 			}
-
-			builder.tag(atom.value);
-			currentState = State.READ_COMMAND;
 		}
 		case READ_COMMAND: {
-			Atom atom = atomDecoder.parse(in);
+			String atom = atomDecoder.parse(in);
 			if (atom == null) {
 				return;
 			}
-			builder.command(atom.value);
-			if (atom.crlf) {
-				ImapCommand r = builder.build();
-				out.add(r);
-				resetNow();
-				break;
-			} else {
-				currentState = State.READ_PARAMTERS;
-			}
+			atomDecoder.reset();
+			builder.command(atom);
+			currentState = State.READ_PARAMTERS;
 		}
 		case READ_PARAMTERS: {
 			CommandParameter param = null;
@@ -84,6 +78,7 @@ public class ImapCommandDecoder extends ByteToMessageDecoder {
 			}
 		}
 		}
+
 	}
 
 	private void resetNow() {

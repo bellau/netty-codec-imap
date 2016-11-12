@@ -20,25 +20,22 @@ import io.netty.buffer.ByteBufProcessor;
 import io.netty.handler.codec.TooLongFrameException;
 import io.netty.util.internal.AppendableCharSequence;
 
-public class AtomDecoder implements ByteBufProcessor {
+public class LineDecoder implements ByteBufProcessor {
 
 	public static final byte CR = 13;
 	public static final byte LF = 10;
 	private static final int MAX_ATOM_LENGTH = 128;
-	public static final byte SP = 32;
 
 	private final AppendableCharSequence seq = new AppendableCharSequence(128);
 
 	private int size = 0;
 
 	public String parse(ByteBuf buffer) {
-		reset();
-
 		int pos = buffer.forEachByte((ByteBufProcessor) this);
 		if (pos == -1) {
 			return null;
 		} else {
-			buffer.readerIndex(pos);
+			buffer.readerIndex(pos + 1);
 			return new String(seq.toString());
 		}
 	}
@@ -52,12 +49,8 @@ public class AtomDecoder implements ByteBufProcessor {
 	public boolean process(byte value) throws Exception {
 		char nextByte = (char) value;
 		if (nextByte == CR) {
-			return false;
+			return true;
 		} else if (nextByte == LF) {
-			return false;
-		} else if (nextByte == ']') {
-			return false;
-		} else if (nextByte == SP) {
 			return false;
 		} else {
 			if (size >= MAX_ATOM_LENGTH) {
@@ -69,5 +62,4 @@ public class AtomDecoder implements ByteBufProcessor {
 		}
 
 	}
-
 }

@@ -66,6 +66,11 @@ public class ParameterDecoder {
 
 	private State currentState = State.NEXT;
 	private LiteralLength literalLength;
+	private boolean statusParameter;
+
+	public ParameterDecoder(boolean b) {
+		statusParameter = b;
+	}
 
 	public State getState() {
 		return currentState;
@@ -89,12 +94,26 @@ public class ParameterDecoder {
 				in.skipBytes(1);
 				return next(ctx, in);
 			case CR:
+				if (statusParameter) {
+					throw new CorruptedFrameException("byte " + new Character((char) firstByte));
+				}
 				in.skipBytes(1);
 				return next(ctx, in);
 			case LF:
+				if (statusParameter) {
+					throw new CorruptedFrameException("byte " + new Character((char) firstByte));
+				}
 				in.skipBytes(1);
 				currentState = State.Ended;
 				return null;
+			case ']':
+				if (statusParameter) {
+					in.skipBytes(1);
+					currentState = State.Ended;
+					return null;
+				} else {
+					throw new CorruptedFrameException("byte " + new Character((char) firstByte));
+				}
 			case CLOSE_PARENTHESES:
 				currentState = State.EMPTY;
 				break;
@@ -296,7 +315,7 @@ public class ParameterDecoder {
 	public void reset() {
 		seq.reset();
 		size = 0;
-		currentState = State.EMPTY;
+		currentState = State.NEXT;
 	}
 
 }
