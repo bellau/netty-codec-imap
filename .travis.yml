@@ -1,5 +1,5 @@
 jdk:
-         - openjdk8
+         - oraclejdk8
 script:
         mvn verify
 after_success:
