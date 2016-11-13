@@ -18,16 +18,19 @@ package io.netty.handler.codec.imap;
 import java.nio.charset.Charset;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 
-public class ChunkParameter implements CommandParameter {
+public class LiteralParameter implements CommandParameter {
 
+	private int total;
 	private ByteBuf buffer;
-	private boolean last;
+	private boolean plus;
 
-	public ChunkParameter(ByteBuf read, boolean last) {
+	public LiteralParameter(ByteBuf read, int total, boolean plus) {
 		this.buffer = read;
-		this.last = last;
+		this.total = total;
+		this.plus = plus;
 	}
 
 	@Override
@@ -39,7 +42,20 @@ public class ChunkParameter implements CommandParameter {
 
 	@Override
 	public boolean isPartial() {
-		return last;
+		return total != buffer.readableBytes();
+	}
+
+	@Override
+	public void write(ByteBuf buf) {
+		buf.writeByte('{');
+		ByteBufUtil.writeAscii(buf, Integer.toString(total));
+		if (plus) {
+			buf.writeByte('+');
+		}
+		buf.writeByte('}');
+		buf.writeByte('\r');
+		buf.writeByte('\n');
+		buf.writeBytes(buffer.slice());
 	}
 
 	@Override
@@ -47,7 +63,8 @@ public class ChunkParameter implements CommandParameter {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((buffer == null) ? 0 : buffer.hashCode());
-		result = prime * result + (last ? 1231 : 1237);
+		result = prime * result + (plus ? 1231 : 1237);
+		result = prime * result + total;
 		return result;
 	}
 
@@ -59,20 +76,17 @@ public class ChunkParameter implements CommandParameter {
 			return false;
 		if (getClass() != obj.getClass())
 			return false;
-		ChunkParameter other = (ChunkParameter) obj;
+		LiteralParameter other = (LiteralParameter) obj;
 		if (buffer == null) {
 			if (other.buffer != null)
 				return false;
 		} else if (!buffer.equals(other.buffer))
 			return false;
-		if (last != other.last)
+		if (plus != other.plus)
+			return false;
+		if (total != other.total)
 			return false;
 		return true;
-	}
-
-	@Override
-	public void write(ByteBuf buf) {
-		buf.writeBytes(buffer.slice());
 	}
 
 }

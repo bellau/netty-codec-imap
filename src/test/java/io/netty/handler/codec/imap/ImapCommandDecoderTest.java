@@ -81,16 +81,45 @@ public class ImapCommandDecoderTest {
 
 	@Test
 	public void testCommandAndLiteralParam() {
-		assertThat(testCommand("ZZ01 BLURYBLOOP {11+}12345678901 {2+}OK \"OK2\"\r\n"),
+		assertThat(testCommand("ZZ01 BLURYBLOOP {11+}\r\n12345678901 {2+}\r\nOK \"OK2\"\r\n"),
 
 				match("ZZ01", "BLURYBLOOP",
-						new ChunkParameter(Unpooled.copiedBuffer("12345678901", Charset.defaultCharset()), 0),
-						new ChunkParameter(Unpooled.copiedBuffer("OK", Charset.defaultCharset()), 0),
+						new LiteralParameter(Unpooled.copiedBuffer("12345678901", Charset.defaultCharset()), 11, true),
+						new LiteralParameter(Unpooled.copiedBuffer("OK", Charset.defaultCharset()), 2, true),
+						new QuotedStringParameter("OK2")));
+	}
+
+	@Test
+	public void testCommandAndLiteralParamChunked() {
+		testCommand("ZZ01 BLURYBLOOP {5+}\r\n12");
+		assertThat(testCommand("355 {2+}\r\nOK \"OK2\"\r\n"),
+
+				match("ZZ01", "BLURYBLOOP",
+						new LiteralParameter(Unpooled.copiedBuffer("12", Charset.defaultCharset()), 5, true),
+						new ChunkParameter(Unpooled.copiedBuffer("355", Charset.defaultCharset()), true),
+						new LiteralParameter(Unpooled.copiedBuffer("OK", Charset.defaultCharset()), 2, true),
+						new QuotedStringParameter("OK2")));
+
+		testCommand("ZZ01 BLURYBLOOP {9}\r\n12");
+		testCommand("355");
+		assertThat(testCommand("YEAH {2}\r\nOK \"OK2\"\r\n"),
+
+				match("ZZ01", "BLURYBLOOP",
+						new LiteralParameter(Unpooled.copiedBuffer("12", Charset.defaultCharset()), 9, false),
+						new ChunkParameter(Unpooled.copiedBuffer("355", Charset.defaultCharset()), false),
+						new ChunkParameter(Unpooled.copiedBuffer("YEAH", Charset.defaultCharset()), true),
+						new LiteralParameter(Unpooled.copiedBuffer("OK", Charset.defaultCharset()), 2, false),
 						new QuotedStringParameter("OK2")));
 	}
 
 	@Test
 	public void testCommandAndListParam() {
+
+		assertThat(testCommand("ZZ01 STATUS INBOX (MESSAGES UNSEEND UIDVALIDTIY)\r\n"),
+				match("ZZ01", "STATUS", new AtomParameter("INBOX"), new OpenListParameter(),
+						new AtomParameter("MESSAGES"), new AtomParameter("UNSEEND"), new AtomParameter("UIDVALIDTIY"),
+						new CloseListParameter()));
+
 		assertThat(testCommand("ZZ01 BLURYBLOOP (ABC DCD NIL)\r\n"),
 				match("ZZ01", "BLURYBLOOP", new OpenListParameter(), new AtomParameter("ABC"), new AtomParameter("DCD"),
 						new NilParameter(), new CloseListParameter()));
@@ -99,6 +128,7 @@ public class ImapCommandDecoderTest {
 				match("ZZ01", "BLURYBLOOP", new OpenListParameter(), new AtomParameter("ABC"), new AtomParameter("DCD"),
 						new OpenListParameter(), new QuotedStringParameter("123"), new AtomParameter("OOO"),
 						new CloseListParameter(), new CloseListParameter()));
+
 	}
 
 	@Test
@@ -136,6 +166,10 @@ public class ImapCommandDecoderTest {
 		Object o = channel.readInbound();
 		assertThat(o, instanceOf(ImapCommand.class));
 		ImapCommand request = (ImapCommand) o;
+		ByteBuf buff = Unpooled.buffer();
+		request.write(buff);
+		System.err.println("cmd " + buff.toString(Charset.defaultCharset()));
+
 		return request;
 	}
 

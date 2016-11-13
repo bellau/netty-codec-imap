@@ -15,6 +15,9 @@
  */
 package io.netty.handler.codec.imap;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+
 public class AtomParameter implements CommandParameter {
 
 	private final String value;
@@ -56,6 +59,11 @@ public class AtomParameter implements CommandParameter {
 		} else if (!value.equals(other.value))
 			return false;
 		return true;
+	}
+
+	@Override
+	public void write(ByteBuf buf) {
+		ByteBufUtil.writeAscii(buf, value);
 	}
 
 }

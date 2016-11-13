@@ -18,6 +18,9 @@ package io.netty.handler.codec.imap;
 import java.util.Arrays;
 import java.util.List;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+
 public interface ImapResponse {
 
 	public class ResponseCode {
@@ -65,22 +68,29 @@ public interface ImapResponse {
 			return "ResponseCode [name=" + name + ", parameters=" + parameters + "]";
 		}
 
+		public void write(ByteBuf buf) {
+			buf.writeByte('[');
+			ByteBufUtil.writeAscii(buf, name);
+			CommandParameter.write(buf, parameters);
+			buf.writeByte(']');
+		}
+
 	}
 
 	public interface StatusResponse extends ImapResponse {
 		public ResponseCode getCode();
 
 		public static StatusResponse create(String tag, String statusCode, List<CommandParameter> statusCodeParams,
-				String statusResponse, String statusReponseCommand, String statusReponseMessage) {
+				String statusResponse, String statusReponseMessage) {
 			ResponseCode code = statusCode != null ? new ResponseCode(statusCode, statusCodeParams) : null;
 			if (statusResponse.equals("OK")) {
-				return new Ok(tag, code, statusReponseCommand, statusReponseMessage);
+				return new Ok(tag, code, statusReponseMessage);
 			} else if (statusResponse.equals("BYE")) {
 				return new ByeResponse(code, statusReponseMessage);
 			} else if (statusResponse.equals("BAD")) {
-				return new Bad(tag, code, statusReponseCommand, statusReponseMessage);
+				return new Bad(tag, code, statusReponseMessage);
 			} else if (statusResponse.equals("NO")) {
-				return new No(tag, code, statusReponseCommand, statusReponseMessage);
+				return new No(tag, code, statusReponseMessage);
 			} else if (statusResponse.equals("PREAUTH")) {
 				return new PreAuthResponse(code, statusReponseMessage);
 			} else {
@@ -141,6 +151,19 @@ public interface ImapResponse {
 			return true;
 		}
 
+		@Override
+		public void write(ByteBuf buf) {
+			buf.writeByte('*');
+			buf.writeByte(' ');
+			ByteBufUtil.writeAscii(buf, command);
+			CommandParameter.write(buf, parameters);
+		}
+
+		@Override
+		public String toString() {
+			return "ServerResponse [command=" + command + ", parameters=" + parameters + "]";
+		}
+
 	}
 
 	public static class GenericReponse implements StatusResponse {
@@ -148,13 +171,11 @@ public interface ImapResponse {
 		public final ResponseCode code;
 		private final String reponse;
 		public final List<CommandParameter> parameters;
-		public final String command;
 
-		public GenericReponse(String tag, ResponseCode code, String response, String command, String message) {
+		public GenericReponse(String tag, ResponseCode code, String response, String message) {
 			this.tag = tag;
 			this.code = code;
 			this.reponse = response;
-			this.command = command;
 			this.parameters = Arrays.asList(new HumanReadableParameter(message));
 		}
 
@@ -178,7 +199,6 @@ public interface ImapResponse {
 			final int prime = 31;
 			int result = 1;
 			result = prime * result + ((code == null) ? 0 : code.hashCode());
-			result = prime * result + ((command == null) ? 0 : command.hashCode());
 			result = prime * result + ((parameters == null) ? 0 : parameters.hashCode());
 			result = prime * result + ((tag == null) ? 0 : tag.hashCode());
 			return result;
@@ -198,11 +218,6 @@ public interface ImapResponse {
 					return false;
 			} else if (!code.equals(other.code))
 				return false;
-			if (command == null) {
-				if (other.command != null)
-					return false;
-			} else if (!command.equals(other.command))
-				return false;
 			if (parameters == null) {
 				if (other.parameters != null)
 					return false;
@@ -219,23 +234,44 @@ public interface ImapResponse {
 		@Override
 		public String toString() {
 			return "GenericReponse [tag=" + tag + ", code=" + code + ", reponse=" + reponse + ", parameters="
-					+ parameters + ", command=" + command + "]";
+					+ parameters + "]";
+		}
+
+		@Override
+		public void write(ByteBuf buf) {
+			if (tag != null) {
+				ByteBufUtil.writeAscii(buf, tag);
+
+			} else {
+				buf.writeByte('*');
+			}
+			buf.writeByte(' ');
+			ByteBufUtil.writeAscii(buf, reponse);
+
+			if (code != null) {
+				buf.writeByte(' ');
+				code.write(buf);
+			}
+
+			if (parameters != null) {
+				CommandParameter.write(buf, parameters);
+			}
 		}
 
 	}
 
 	public static class Ok extends GenericReponse {
 
-		public Ok(String tag, ResponseCode code, String command, String message) {
-			super(tag, code, "OK", command, message);
+		public Ok(String tag, ResponseCode code, String message) {
+			super(tag, code, "OK", message);
 		}
 
 	}
 
 	public static class No extends GenericReponse {
 
-		public No(String tag, ResponseCode code, String command, String message) {
-			super(tag, code, "NO", command, message);
+		public No(String tag, ResponseCode code, String message) {
+			super(tag, code, "NO", message);
 		}
 
 	}
@@ -249,10 +285,12 @@ public interface ImapResponse {
 
 		public final String command;
 		public final int number;
+		private List<CommandParameter> parameters;
 
-		public MessageStatusResponse(int number, String command) {
+		public MessageStatusResponse(int number, String command, List<CommandParameter> parameters) {
 			this.number = number;
 			this.command = command;
+			this.parameters = parameters;
 		}
 
 		@Override
@@ -262,7 +300,7 @@ public interface ImapResponse {
 
 		@Override
 		public List<CommandParameter> getParameters() {
-			return null;
+			return parameters;
 		}
 
 		@Override
@@ -293,26 +331,40 @@ public interface ImapResponse {
 			return true;
 		}
 
+		@Override
+		public void write(ByteBuf buf) {
+			buf.writeByte('*');
+			buf.writeByte(' ');
+			ByteBufUtil.writeAscii(buf, Integer.toString(number));
+
+			buf.writeByte(' ');
+			ByteBufUtil.writeAscii(buf, command);
+
+			if (parameters != null) {
+				CommandParameter.write(buf, parameters);
+			}
+		}
+
 	}
 
 	public static class ByeResponse extends GenericReponse {
 
 		public ByeResponse(ResponseCode code, String message) {
-			super(null, code, "BYE", null, message);
+			super(null, code, "BYE", message);
 		}
 	}
 
 	public static class Bad extends GenericReponse {
 
-		public Bad(String tag, ResponseCode code, String command, String message) {
-			super(tag, code, "BAD", command, message);
+		public Bad(String tag, ResponseCode code, String message) {
+			super(tag, code, "BAD", message);
 		}
 	}
 
 	public static class PreAuthResponse extends GenericReponse {
 
 		public PreAuthResponse(ResponseCode code, String message) {
-			super(null, code, "PREAUTH", null, message);
+			super(null, code, "PREAUTH", message);
 		}
 
 	}
@@ -320,4 +372,6 @@ public interface ImapResponse {
 	public boolean tagged();
 
 	public List<CommandParameter> getParameters();
+
+	public void write(ByteBuf buf);
 }

@@ -33,7 +33,7 @@ public class ParameterDecoder {
 	public static final byte LF = 10;
 	public static final byte SP = 32;
 
-	private static final int MAX_ATOM_LENGTH = 128;
+	private static final int MAX_ATOM_LENGTH = 4096;
 
 	public static class LiteralLength {
 		public LiteralLength(int parseInt, boolean b) {
@@ -46,6 +46,10 @@ public class ParameterDecoder {
 		int length;
 
 		private int r;
+
+		public boolean first() {
+			return (r - length) == 0;
+		}
 
 		public int remainingLength() {
 			return r;
@@ -83,9 +87,12 @@ public class ParameterDecoder {
 		}
 
 		byte firstByte = in.getByte(in.readerIndex());
-		int i = in.readableBytes();
-		byte[] dst = new byte[i];
-		in.getBytes(in.readerIndex(), dst);
+
+		if (currentState == State.EMPTY && firstByte == ' ') {
+			in.skipBytes(1);
+			return next(ctx, in);
+		}
+
 		switch (currentState) {
 		case NEXT: {
 			switch (firstByte) {
@@ -111,8 +118,6 @@ public class ParameterDecoder {
 					in.skipBytes(1);
 					currentState = State.Ended;
 					return null;
-				} else {
-					throw new CorruptedFrameException("byte " + new Character((char) firstByte));
 				}
 			case CLOSE_PARENTHESES:
 				currentState = State.EMPTY;
@@ -174,7 +179,7 @@ public class ParameterDecoder {
 		case READ_LITERAL_LENGTH: {
 			literalLength = decodeLiteralLength(in);
 			if (literalLength != null) {
-				in.skipBytes(1);
+				in.skipBytes(3);
 				currentState = State.READ_LITERAL;
 			} else {
 				return null;
@@ -200,9 +205,16 @@ public class ParameterDecoder {
 		}
 
 		ByteBuf read = ByteBufUtil.readBytes(ctx.alloc(), in, toRead);
-		literalLength.read(toRead);
 
-		ChunkParameter ret = new ChunkParameter(read, literalLength.remainingLength());
+		CommandParameter ret = null;
+		if (literalLength.first()) {
+			ret = new LiteralParameter(read, literalLength.length, literalLength.plus);
+			literalLength.read(toRead);
+		} else {
+			literalLength.read(toRead);
+			ret = new ChunkParameter(read, literalLength.remainingLength() == 0);
+		}
+
 		if (literalLength.remainingLength() == 0) {
 			literalLength = null;
 		}
@@ -238,7 +250,7 @@ public class ParameterDecoder {
 			if (v.charAt(v.length() - 1) == '+') {
 				ret = new LiteralLength(Integer.parseInt(v.substring(0, v.length() - 1)), true);
 			} else {
-				ret = new LiteralLength(Integer.parseInt(v), true);
+				ret = new LiteralLength(Integer.parseInt(v), false);
 			}
 			seq.reset();
 			size = 0;
@@ -247,10 +259,13 @@ public class ParameterDecoder {
 	}
 
 	private CommandParameter decodeAtom(ByteBuf in) {
+		seq.reset();
+		size = 0;
 		int pos = in.forEachByte((value) -> {
 
 			char nextByte = (char) value;
-			if (nextByte == LF || nextByte == CR || nextByte == SP || nextByte == CLOSE_PARENTHESES) {
+			if (nextByte == LF || nextByte == CR || nextByte == SP || nextByte == CLOSE_PARENTHESES
+					|| (statusParameter && nextByte == ']')) {
 				return false;
 			} else {
 				if (size >= MAX_ATOM_LENGTH) {
@@ -269,12 +284,15 @@ public class ParameterDecoder {
 			String value = new String(seq.toString());
 			CommandParameter ret = null;
 			char firstChar = value.charAt(0);
-			if (firstChar >= '0' && firstChar <= '9') {
-				ret = new NumberParameter(Integer.parseInt(value));
-			} else if (firstChar == 'N' && value.equals("NIL")) {
+			if (firstChar == 'N' && value.equals("NIL")) {
 				ret = new NilParameter();
 			} else {
-				ret = new AtomParameter(value);
+
+				try {
+					ret = new NumberParameter(Integer.parseInt(value));
+				} catch (Exception e) {
+					ret = new AtomParameter(value);
+				}
 			}
 			seq.reset();
 			size = 0;

@@ -15,6 +15,9 @@
  */
 package io.netty.handler.codec.imap;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+
 public class NilParameter implements CommandParameter {
 
 	@Override
@@ -42,4 +45,10 @@ public class NilParameter implements CommandParameter {
 			return false;
 		return true;
 	}
+
+	@Override
+	public void write(ByteBuf buf) {
+		ByteBufUtil.writeAscii(buf, "NIL");
+	}
+
 }

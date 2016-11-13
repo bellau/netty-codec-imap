@@ -15,8 +15,28 @@
  */
 package io.netty.handler.codec.imap;
 
+import java.util.List;
+
+import io.netty.buffer.ByteBuf;
+
 public interface CommandParameter {
 
 	public boolean isPartial();
 
+	public static void write(ByteBuf buf, List<CommandParameter> parameters) {
+		if (parameters == null) {
+			return;
+		}
+		CommandParameter last = null;
+		for (CommandParameter p : parameters) {
+			if (last == null || (!(last instanceof OpenListParameter) && !(p instanceof CloseListParameter)
+					&& !(p instanceof ChunkParameter))) {
+				buf.writeByte(' ');
+			}
+			last = p;
+			p.write(buf);
+		}
+	}
+
+	public void write(ByteBuf buf);
 }

@@ -24,7 +24,7 @@ public class LineDecoder implements ByteBufProcessor {
 
 	public static final byte CR = 13;
 	public static final byte LF = 10;
-	private static final int MAX_ATOM_LENGTH = 128;
+	private static final int MAX_ATOM_LENGTH = 500;
 
 	private final AppendableCharSequence seq = new AppendableCharSequence(128);
 

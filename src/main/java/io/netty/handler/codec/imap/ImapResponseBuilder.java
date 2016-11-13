@@ -62,21 +62,17 @@ public class ImapResponseBuilder {
 
 	public ImapResponse build() {
 		if (messageStatusNumer != null) {
-			return new ImapResponse.MessageStatusResponse(messageStatusNumer, messageStatusCommand);
+			return new ImapResponse.MessageStatusResponse(messageStatusNumer, messageStatusCommand, parameters);
 		} else if (serverResponseCommand != null) {
 			return new ImapResponse.ServerResponse(serverResponseCommand, parameters);
 		} else {
 			return ImapResponse.StatusResponse.create(tag, statusCode, statusCodeParams, statusResponse,
-					statusResponseCommand, statusReponseMessage);
+					statusReponseMessage);
 		}
 	}
 
 	public boolean tagged() {
 		return tag != null;
-	}
-
-	public void statusResponseCommand(String value) {
-		this.statusResponseCommand = value;
 	}
 
 }

@@ -15,6 +15,8 @@
  */
 package io.netty.handler.codec.imap;
 
+import io.netty.buffer.ByteBuf;
+
 public class CloseListParameter implements CommandParameter {
 
 	@Override
@@ -41,6 +43,11 @@ public class CloseListParameter implements CommandParameter {
 		if (getClass() != obj.getClass())
 			return false;
 		return true;
+	}
+
+	@Override
+	public void write(ByteBuf buf) {
+		buf.writeByte(')');
 	}
 
 }

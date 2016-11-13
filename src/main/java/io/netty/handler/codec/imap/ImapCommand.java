@@ -17,6 +17,9 @@ package io.netty.handler.codec.imap;
 
 import java.util.List;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+
 public class ImapCommand {
 
 	private String tag;
@@ -72,6 +75,15 @@ public class ImapCommand {
 			return null;
 		}
 		return parameters.get(parameters.size() - 1);
+	}
+
+	public void write(ByteBuf buf) {
+		ByteBufUtil.writeAscii(buf, tag);
+		buf.writeByte(' ');
+		ByteBufUtil.writeAscii(buf, command);
+		if (parameters != null && !parameters.isEmpty()) {
+			CommandParameter.write(buf, parameters);
+		}
 	}
 
 }

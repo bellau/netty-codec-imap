@@ -18,6 +18,7 @@ package io.netty.handler.codec.imap;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.assertThat;
 
+import java.nio.charset.Charset;
 import java.util.Arrays;
 
 import org.hamcrest.CoreMatchers;
@@ -42,10 +43,12 @@ public class ImapResponseDecoderTest {
 	@Test
 	public void testTaggedOkResponse() {
 		ImapResponse r = testResponse("A001 OK LOGIN Completed\r\n");
-		assertThat(r, match(new ImapResponse.Ok("A001", null, "LOGIN", "Completed")));
+		assertThat(r, match(new ImapResponse.Ok("A001", null, "LOGIN Completed")));
 
 		r = testResponse("A001 OK [ALERT] LOGIN Completed\r\n");
-		assertThat(r, match(new ImapResponse.Ok("A001", new ResponseCode("ALERT", null), "LOGIN", "Completed")));
+		assertThat(r, match(new ImapResponse.Ok("A001", new ResponseCode("ALERT", null), "LOGIN Completed")));
+		assertThat(testResponse("C00047 OK [READ-WRITE] Complete\r\n"),
+				match(new ImapResponse.Ok("C00047", new ResponseCode("READ-WRITE", null), "Complete")));
 	}
 
 	@Test
@@ -55,16 +58,33 @@ public class ImapResponseDecoderTest {
 				match(new ImapResponse.Ok(null, new ResponseCode("PERMANENTFLAGS",
 						Arrays.asList(new OpenListParameter(), new AtomParameter("\\Deleted"),
 								new AtomParameter("\\Seen"), new AtomParameter("\\*"), new CloseListParameter())),
-						null, "Limited")));
+						"Limited")));
+
+		r = testResponse("T00083 OK Completed (0.000 sec)\r\n");
+		assertThat(r, match(new ImapResponse.Ok("T00083", null, "Completed (0.000 sec)")));
+
+	}
+
+	@Test
+	public void testUntaggedOkResponse2() {
+		ImapResponse r = testResponse(
+				"* OK [CAPABILITY IMAP4rev1 LITERAL+ ID ENABLE STARTTLS AUTH=PLAIN SASL-IR] server ready\r\n");
+		assertThat(r,
+				match(new ImapResponse.Ok(null, new ResponseCode("CAPABILITY",
+						Arrays.asList(new AtomParameter("IMAP4rev1"), new AtomParameter("LITERAL+"),
+								new AtomParameter("ID"), new AtomParameter("ENABLE"), new AtomParameter("STARTTLS"),
+								new AtomParameter("AUTH=PLAIN"), new AtomParameter("SASL-IR"))),
+						"server ready")));
+
 	}
 
 	@Test
 	public void testTaggedNoResponse() {
 		ImapResponse r = testResponse("A001 NO LOGIN Completed\r\n");
-		assertThat(r, match(new ImapResponse.No("A001", null, "LOGIN", "Completed")));
+		assertThat(r, match(new ImapResponse.No("A001", null, "LOGIN Completed")));
 
 		r = testResponse("A001 NO [ALERT] LOGIN Completed\r\n");
-		assertThat(r, match(new ImapResponse.No("A001", new ResponseCode("ALERT", null), "LOGIN", "Completed")));
+		assertThat(r, match(new ImapResponse.No("A001", new ResponseCode("ALERT", null), "LOGIN Completed")));
 	}
 
 	@Test
@@ -74,16 +94,16 @@ public class ImapResponseDecoderTest {
 				match(new ImapResponse.No(null, new ResponseCode("PERMANENTFLAGS",
 						Arrays.asList(new OpenListParameter(), new AtomParameter("\\Deleted"),
 								new AtomParameter("\\Seen"), new AtomParameter("\\*"), new CloseListParameter())),
-						null, "Limited")));
+						"Limited")));
 	}
 
 	@Test
 	public void testTaggedBadResponse() {
 		ImapResponse r = testResponse("A001 BAD LOGIN Completed\r\n");
-		assertThat(r, match(new ImapResponse.Bad("A001", null, "LOGIN", "Completed")));
+		assertThat(r, match(new ImapResponse.Bad("A001", null, "LOGIN Completed")));
 
 		r = testResponse("A001 BAD [ALERT] LOGIN Completed\r\n");
-		assertThat(r, match(new ImapResponse.Bad("A001", new ResponseCode("ALERT", null), "LOGIN", "Completed")));
+		assertThat(r, match(new ImapResponse.Bad("A001", new ResponseCode("ALERT", null), "LOGIN Completed")));
 	}
 
 	@Test
@@ -93,7 +113,7 @@ public class ImapResponseDecoderTest {
 				match(new ImapResponse.Bad(null, new ResponseCode("PERMANENTFLAGS",
 						Arrays.asList(new OpenListParameter(), new AtomParameter("\\Deleted"),
 								new AtomParameter("\\Seen"), new AtomParameter("\\*"), new CloseListParameter())),
-						null, "Limited")));
+						"Limited")));
 	}
 
 	@Test
@@ -119,7 +139,9 @@ public class ImapResponseDecoderTest {
 	@Test
 	public void testStatusResponse() {
 		ImapResponse r = testResponse("* 5 RECENT\r\n");
-		assertThat(r, match(new ImapResponse.MessageStatusResponse(5, "RECENT")));
+		assertThat(r, match(new ImapResponse.MessageStatusResponse(5, "RECENT", null)));
+
+		r = testResponse("* 12 FETCH (FLAGS (\\Seen $has_cal) UID 304)\r\n");
 	}
 
 	@Test
@@ -127,6 +149,32 @@ public class ImapResponseDecoderTest {
 		ImapResponse r = testResponse("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI LOGINDISABLED\r\n");
 		assertThat(r, match(new ImapResponse.ServerResponse("CAPABILITY", Arrays.asList(new AtomParameter("IMAP4rev1"),
 				new AtomParameter("STARTTLS"), new AtomParameter("AUTH=GSSAPI"), new AtomParameter("LOGINDISABLED")))));
+	}
+
+	@Test
+	public void testCommandResponse() {
+		ImapResponse r = testResponse(
+				"* NAMESPACE ( ( \"\" \"/\" ) ) ( ( \"Autres utilisateurs/\" \"/\" ) ) ( ( \"Dossiers partag&AOk-s/\" \"/\" ) )\r\n");
+
+		assertThat(r,
+				match(new ImapResponse.ServerResponse("NAMESPACE",
+						Arrays.asList(new OpenListParameter(), new OpenListParameter(), new QuotedStringParameter(""),
+								new QuotedStringParameter("/"), new CloseListParameter(), new CloseListParameter(),
+								new OpenListParameter(), new OpenListParameter(),
+								new QuotedStringParameter("Autres utilisateurs/"), new QuotedStringParameter("/"),
+								new CloseListParameter(), new CloseListParameter(), new OpenListParameter(),
+								new OpenListParameter(), new QuotedStringParameter("Dossiers partag&AOk-s/"),
+								new QuotedStringParameter("/"), new CloseListParameter(), new CloseListParameter()))));
+		assertThat(r,
+				match(new ImapResponse.ServerResponse("NAMESPACE",
+						Arrays.asList(new OpenListParameter(), new OpenListParameter(), new QuotedStringParameter(""),
+								new QuotedStringParameter("/"), new CloseListParameter(), new CloseListParameter(),
+								new OpenListParameter(), new OpenListParameter(),
+								new QuotedStringParameter("Autres utilisateurs/"), new QuotedStringParameter("/"),
+								new CloseListParameter(), new CloseListParameter(), new OpenListParameter(),
+								new OpenListParameter(), new QuotedStringParameter("Dossiers partag&AOk-s/"),
+								new QuotedStringParameter("/"), new CloseListParameter(), new CloseListParameter()))));
+
 	}
 
 	private Matcher<ImapResponse> match(ImapResponse response) {
@@ -142,6 +190,9 @@ public class ImapResponseDecoderTest {
 		Object o = channel.readInbound();
 		assertThat(o, instanceOf(ImapResponse.class));
 		ImapResponse response = (ImapResponse) o;
+		ByteBuf buff = Unpooled.buffer();
+		response.write(buff);
+		System.err.println(buff.toString(Charset.defaultCharset()));
 		return response;
 	}
 

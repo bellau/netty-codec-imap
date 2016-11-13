@@ -1,5 +1,8 @@
 package io.netty.handler.codec.imap;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+
 public class HumanReadableParameter implements CommandParameter {
 
 	private final String message;
@@ -41,6 +44,11 @@ public class HumanReadableParameter implements CommandParameter {
 	@Override
 	public String toString() {
 		return "HumanReadableParameter [message=" + message + "]";
+	}
+
+	@Override
+	public void write(ByteBuf buf) {
+		ByteBufUtil.writeAscii(buf, message);
 	}
 
 }

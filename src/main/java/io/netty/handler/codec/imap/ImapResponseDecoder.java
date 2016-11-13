@@ -10,7 +10,7 @@ import io.netty.handler.codec.CorruptedFrameException;
 public class ImapResponseDecoder extends ByteToMessageDecoder {
 
 	private enum State {
-		READ_TAG, READ_MAYBE_STATUS_CODE, READ_STATUS_CODE, READ_COMMAND, READ_PARAMTERS, READ_WOOT, READ_STATUS_CODE_PARAMETER, READ_MESSAGE_STATUS, READ_STATUS_REPONSE, READ_SERVER_RESPONSE, READ_END, READ_STATUS_COMMAND
+		READ_TAG, READ_MAYBE_STATUS_CODE, READ_STATUS_CODE, READ_COMMAND, READ_PARAMTERS, READ_WOOT, READ_STATUS_CODE_PARAMETER, READ_MESSAGE_STATUS, READ_STATUS_REPONSE, READ_STATUS_PARAMETERS, READ_SERVER_RESPONSE, READ_END, READ_MESSAGE_STATUS_PARAMETERS
 	}
 
 	private State currentState;
@@ -54,7 +54,7 @@ public class ImapResponseDecoder extends ByteToMessageDecoder {
 				return;
 			}
 			atomDecoder.reset();
-			if (isNumber(atom.charAt(0))) {
+			if (isNumber(atom)) {
 				checkAndSkipSpace(in);
 				currentState = State.READ_MESSAGE_STATUS;
 				builder.messageStatusNumber(Integer.parseInt(atom));
@@ -75,11 +75,8 @@ public class ImapResponseDecoder extends ByteToMessageDecoder {
 		case READ_MAYBE_STATUS_CODE: {
 			byte firstChar = in.getByte(in.readerIndex());
 			if (firstChar != '[') {
-				if (builder.tagged()) {
-					currentState = State.READ_STATUS_COMMAND;
-				} else {
-					currentState = State.READ_STATUS_REPONSE;
-				}
+				currentState = State.READ_STATUS_REPONSE;
+
 			} else {
 				in.skipBytes(1);
 				currentState = State.READ_STATUS_CODE;
@@ -106,12 +103,7 @@ public class ImapResponseDecoder extends ByteToMessageDecoder {
 
 			if (paramStatusCodeDecoder.getState() == ParameterDecoder.State.Ended) {
 				in.skipBytes(1);
-				if (builder.tagged()) {
-					currentState = State.READ_STATUS_COMMAND;
-				} else {
-					currentState = State.READ_STATUS_REPONSE;
-				}
-
+				currentState = State.READ_STATUS_REPONSE;
 			} else {
 				return;
 			}
@@ -119,25 +111,14 @@ public class ImapResponseDecoder extends ByteToMessageDecoder {
 		default:
 		}
 		switch (currentState) {
-		case READ_STATUS_COMMAND: {
-			String atom = atomDecoder.parse(in);
-			if (atom == null) {
-				return;
-			}
-			atomDecoder.reset();
-
-			checkAndSkipSpace(in);
-			builder.statusResponseCommand(atom);
-			currentState = State.READ_STATUS_REPONSE;
-		}
 		case READ_STATUS_REPONSE: {
 			String message = readMessage(in);
 			if (message == null) {
 				return;
 			}
 			builder.statusReponseMessage(message);
-			currentState = State.READ_TAG;
 			out.add(builder.build());
+			resetNow();
 
 			break;
 		}
@@ -148,9 +129,8 @@ public class ImapResponseDecoder extends ByteToMessageDecoder {
 			}
 
 			if (paramDecoder.getState() == ParameterDecoder.State.Ended) {
-				paramDecoder.reset();
-				currentState = State.READ_TAG;
 				out.add(builder.build());
+				resetNow();
 				break;
 			}
 		}
@@ -161,24 +141,25 @@ public class ImapResponseDecoder extends ByteToMessageDecoder {
 				return;
 			}
 			atomDecoder.reset();
-			checkAndSkipCrLf(in);
+			currentState = State.READ_MESSAGE_STATUS_PARAMETERS;
 			builder.messageStatusCommand(atom);
-			currentState = State.READ_TAG;
-			out.add(builder.build());
-			break;
 		}
+		case READ_MESSAGE_STATUS_PARAMETERS: {
+			CommandParameter param = null;
+			while ((param = paramDecoder.next(ctx, in)) != null) {
+				builder.addReponseCommandParam(param);
+			}
+
+			if (paramDecoder.getState() == ParameterDecoder.State.Ended) {
+				out.add(builder.build());
+				resetNow();
+				break;
+			}
+		}
+
 		default:
 		}
 
-	}
-
-	private void checkAndSkipCrLf(ByteBuf in) {
-		if (in.getByte(in.readerIndex()) == ParameterDecoder.CR
-				&& in.getByte(in.readerIndex() + 1) == ParameterDecoder.LF) {
-			in.skipBytes(2);
-		} else {
-			throw new CorruptedFrameException();
-		}
 	}
 
 	private void checkAndSkipSpace(ByteBuf in) {
@@ -204,8 +185,13 @@ public class ImapResponseDecoder extends ByteToMessageDecoder {
 				|| value.equals("BYE"));
 	}
 
-	private boolean isNumber(char firstChar) {
-		return firstChar >= '0' && firstChar <= '9';
+	private boolean isNumber(String atom) {
+		try {
+			Integer.parseInt(atom);
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	private void resetNow() {
